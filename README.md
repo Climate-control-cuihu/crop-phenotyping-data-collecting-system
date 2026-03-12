@@ -214,3 +214,8 @@ MIT License
 ---
 
 Made with ❤️ for Agricultural Research
+
+
+本地测试命令行
+npm run dev
+

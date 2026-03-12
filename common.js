@@ -86,7 +86,14 @@ var translations = {
 			selectIndicator: '⬆️ 请选择指标开始绘图',
 			yearSuffix: '年',
 			dateAxis: '日期',
-			weekAxis: '周次'
+			weekAxis: '周次',
+			moveUp: '上移',
+			moveDown: '下移',
+			removeChart: '移除图表',
+			upperBound: '上界 (+σ)',
+			lowerBound: '下界 (-σ)',
+			dailyValue: '当日值',
+			sampleMean: '样本平均值'
 		},
 		dateFormats: {
 			weekPrefix: '第',
@@ -224,7 +231,14 @@ var translations = {
 			selectIndicator: '⬆️ Select an indicator to plot',
 			yearSuffix: '',
 			dateAxis: 'Date',
-			weekAxis: 'Week'
+			weekAxis: 'Week',
+			moveUp: 'Move Up',
+			moveDown: 'Move Down',
+			removeChart: 'Remove Chart',
+			upperBound: 'Upper (+σ)',
+			lowerBound: 'Lower (-σ)',
+			dailyValue: 'Daily Value',
+			sampleMean: 'Sample Mean'
 		},
 		dateFormats: {
 			weekPrefix: 'Week ',
@@ -461,8 +475,29 @@ function updateLanguageDisplay() {
 		}
 	});
 
+	// Update title attributes
+	document.querySelectorAll('[data-lang-title]').forEach(el => {
+		const key = el.getAttribute('data-lang-title');
+		const keys = key.split('.');
+		let value = lang;
+		for (const k of keys) {
+			if (value && value[k] !== undefined) {
+				value = value[k];
+			} else {
+				value = undefined;
+				break;
+			}
+		}
+		if (value) {
+			el.title = value;
+		}
+	});
+
 	// Update page title
 	document.title = lang.title;
+
+	// Update document language for native controls (e.g., month picker locale)
+	document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
 
 	// Update language switch button
 	const langSwitch = document.getElementById('langSwitch');
