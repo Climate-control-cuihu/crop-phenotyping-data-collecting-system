@@ -379,6 +379,10 @@
         // Available projects (loaded from DB)
         let availableProjects = [];
 
+        function getProjectCropType(projectName) {
+            return resolveProjectCrop(projectName, availableProjects);
+        }
+
         // Chart card counter
         let chartCardCounter = 0;
 
@@ -392,12 +396,12 @@
             try {
                 const { data, error } = await supabase
                     .from('facility_settings')
-                    .select('project_name')
+                    .select('*')
                     .eq('user_id', currentUser.id);
 
                 if (error) throw error;
 
-                availableProjects = data ? data.map(d => d.project_name) : [];
+                availableProjects = data || [];
             } catch (err) {
                 console.error('加载项目列表失败:', err);
             }
@@ -457,8 +461,9 @@
 
         // Generate project dropdown options
         function getProjectOptionsHTML(selectedProject) {
-            return availableProjects.map(p =>
-                `<option value="${p}" ${p === selectedProject ? 'selected' : ''}>${p}</option>`
+            const names = [...new Set(availableProjects.map(p => p.project_name))];
+            return names.map(name =>
+                `<option value="${name}" ${name === selectedProject ? 'selected' : ''}>${name}</option>`
             ).join('');
         }
 
@@ -576,7 +581,9 @@
 
             // 默认选择当前工作项目或第一个可用项目
             const lastProject = localStorage.getItem('currentProject');
-            const defaultProject = (availableProjects.includes(lastProject)) ? lastProject : (availableProjects[0] || '');
+            const projectNames = [...new Set(availableProjects.map(p => p.project_name))];
+            const defaultProject = (projectNames.includes(lastProject)) ? lastProject : (projectNames[0] || '');
+            setProjectCropType(defaultProject, getProjectCropType(defaultProject));
 
             const cardHTML = `
                 <div class="chart-card" id="${cardId}" style="background: white; border-radius: 20px; 
@@ -801,7 +808,7 @@
             const endMonthEl = document.getElementById(`${cardId}-endMonth`);
 
             const previousProject = cardInfo.project;
-            cardInfo.project = projectEl ? projectEl.value : (availableProjects[0] || '');
+            cardInfo.project = projectEl ? projectEl.value : ((availableProjects[0] && availableProjects[0].project_name) || '');
             cardInfo.sample = sampleEl ? sampleEl.value : '__ALL__';
             cardInfo.field = indicatorEl ? indicatorEl.value : '';
             cardInfo.startMonth = startMonthEl ? startMonthEl.value : cardInfo.startMonth;
@@ -819,6 +826,16 @@
 
             // If project changed, reload samples and update selector
             if (previousProject !== cardInfo.project) {
+                const cropType = getProjectCropType(cardInfo.project);
+                setProjectCropType(cardInfo.project, cropType);
+
+                // Rebuild indicator options for new crop type
+                indicators = getIndicators(cropType);
+                if (indicatorEl) {
+                    indicatorEl.innerHTML = getIndicatorOptionsHTML();
+                    cardInfo.field = '';
+                }
+
                 await loadAvailableSamples(cardInfo.project);
                 if (sampleEl) {
                     sampleEl.innerHTML = getSampleOptionsHTML();

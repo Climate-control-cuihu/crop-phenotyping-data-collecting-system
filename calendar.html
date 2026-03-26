@@ -244,6 +244,11 @@
         const dateDisplay = document.getElementById('currentDateDisplay');
         const loadingEl = document.getElementById('loadingIndicator');
         const projectSelect = document.getElementById('projectSelect');
+        let availableProjectMeta = [];
+
+        function getProjectCropType(projectName) {
+            return resolveProjectCrop(projectName, availableProjectMeta);
+        }
 
         // Load Projects
         async function loadProjects() {
@@ -252,12 +257,13 @@
             try {
                 const { data, error } = await supabase
                     .from('facility_settings')
-                    .select('project_name')
+                    .select('*')
                     .eq('user_id', currentUser.id);
 
                 if (error) throw error;
 
                 projectSelect.innerHTML = '<option value="" disabled>选择项目...</option>';
+                availableProjectMeta = data || [];
 
                 if (data && data.length > 0) {
                     // Check if currentProject is still valid
@@ -266,6 +272,7 @@
                         currentProject = data[0].project_name;
                         localStorage.setItem('currentProject', currentProject);
                     }
+                    setProjectCropType(currentProject, getProjectCropType(currentProject));
 
                     data.forEach(p => {
                         const option = document.createElement('option');
@@ -510,6 +517,7 @@
         projectSelect.addEventListener('change', (e) => {
             currentProject = e.target.value;
             localStorage.setItem('currentProject', currentProject);
+            setProjectCropType(currentProject, getProjectCropType(currentProject));
             loadMonthData();
         });
 

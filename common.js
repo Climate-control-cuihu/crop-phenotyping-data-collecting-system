@@ -123,6 +123,13 @@ var translations = {
 			growth_cm: '生长量',
 			stem_mm: '茎粗',
 			leaf_count: '叶片总数',
+			plant_weight_without_root_g: '不带根单株重',
+			plant_weight_with_root_g: '带根单株重',
+			plant_height_cm: '株高',
+			max_leaf_length_cm: '最大叶片长度',
+			max_leaf_width_cm: '最大叶片宽度',
+			leaf_spread_length_cm: '叶片开展度-长度',
+			leaf_spread_width_cm: '叶片开展度-宽度',
 			leaf_length_cm: '叶长',
 			leaf_width_cm: '叶宽',
 			potential_flower_count: '潜力开花数',
@@ -268,6 +275,13 @@ var translations = {
 			growth_cm: 'Growth',
 			stem_mm: 'Stem Diameter',
 			leaf_count: 'Total Leaf Count',
+			plant_weight_without_root_g: 'Plant Weight Without Root',
+			plant_weight_with_root_g: 'Plant Weight With Root',
+			plant_height_cm: 'Plant Height',
+			max_leaf_length_cm: 'Max Leaf Length',
+			max_leaf_width_cm: 'Max Leaf Width',
+			leaf_spread_length_cm: 'Leaf Spread Length',
+			leaf_spread_width_cm: 'Leaf Spread Width',
 			leaf_length_cm: 'Leaf Length',
 			leaf_width_cm: 'Leaf Width',
 			potential_flower_count: 'Potential Flower Count',
@@ -377,12 +391,93 @@ var indicatorsConfig = [
 
 ];
 
+// Lettuce-specific weekly indicators (daily indicators are reused from tomato config)
+var lettuceWeeklyIndicators = [
+	{ field: 'plant_weight_without_root_g', unit: 'g', unitEn: 'g', min: 50, max: 500, step: 1, defaultValue: 50, frequency: 'weekly' },
+	{ field: 'plant_weight_with_root_g', unit: 'g', unitEn: 'g', min: 50, max: 1000, step: 1, defaultValue: 50, frequency: 'weekly' },
+	{ field: 'plant_height_cm', unit: 'cm', unitEn: 'cm', min: 5, max: 30, step: 0.1, defaultValue: 5, frequency: 'weekly' },
+	{ field: 'leaf_count', unit: '个', unitEn: 'pcs', min: 5, max: 60, step: 1, defaultValue: 5, frequency: 'weekly' },
+	{ field: 'max_leaf_length_cm', unit: 'cm', unitEn: 'cm', min: 5, max: 30, step: 0.1, defaultValue: 5, frequency: 'weekly' },
+	{ field: 'max_leaf_width_cm', unit: 'cm', unitEn: 'cm', min: 3, max: 20, step: 0.1, defaultValue: 3, frequency: 'weekly' },
+	{ field: 'leaf_spread_length_cm', unit: 'cm', unitEn: 'cm', min: 5, max: 20, step: 0.1, defaultValue: 5, frequency: 'weekly' },
+	{ field: 'leaf_spread_width_cm', unit: 'cm', unitEn: 'cm', min: 5, max: 20, step: 0.1, defaultValue: 5, frequency: 'weekly' }
+];
+
+// Build crop-aware indicator config while preserving existing tomato behavior.
+var indicatorsConfigByCrop = {
+	tomato: indicatorsConfig,
+	lettuce: [
+		...lettuceWeeklyIndicators,
+		...indicatorsConfig.filter(ind => ind.frequency === 'daily' || ind.frequency === 'constant')
+	]
+};
+
+function getCurrentCropType() {
+	const crop = localStorage.getItem('currentProjectCrop');
+	if (!crop) return 'tomato';
+	return crop === 'lettuce' ? 'lettuce' : 'tomato';
+}
+
+function normalizeCropType(cropType) {
+	return cropType === 'lettuce' ? 'lettuce' : 'tomato';
+}
+
+function getProjectCropMap() {
+	try {
+		return JSON.parse(localStorage.getItem('projectCropMap') || '{}');
+	} catch (_) {
+		return {};
+	}
+}
+
+function setProjectCropType(projectName, cropType) {
+	if (!projectName) return;
+	const map = getProjectCropMap();
+	map[projectName] = normalizeCropType(cropType);
+	localStorage.setItem('projectCropMap', JSON.stringify(map));
+	setCurrentCropType(normalizeCropType(cropType));
+	localStorage.setItem('currentProject', projectName);
+}
+
+function getProjectCropTypeForProject(projectName, fallback = 'tomato') {
+	if (!projectName) return fallback;
+	const map = getProjectCropMap();
+	return normalizeCropType(map[projectName] || fallback);
+}
+
+function resolveProjectCrop(projectName, projectRows = []) {
+	if (!projectName) return 'tomato';
+
+	const rowCrop = projectRows
+		.filter(row => row && row.project_name === projectName)
+		.map(row => row.crop_type)
+		.find(crop => crop === 'lettuce' || crop === 'tomato');
+
+	if (rowCrop) return normalizeCropType(rowCrop);
+
+	const mapCrop = getProjectCropTypeForProject(projectName, null);
+	if (mapCrop) return normalizeCropType(mapCrop);
+
+	if (localStorage.getItem('currentProject') === projectName) {
+		return getCurrentCropType();
+	}
+
+	return 'tomato';
+}
+
+function setCurrentCropType(cropType) {
+	const crop = normalizeCropType(cropType);
+	localStorage.setItem('currentProjectCrop', crop);
+}
+
 // Get indicators with current language
-function getIndicators() {
+function getIndicators(cropType = null) {
 	const lang = translations[currentLang];
-	return indicatorsConfig.map(ind => ({
+	const crop = cropType || getCurrentCropType();
+	const config = indicatorsConfigByCrop[crop] || indicatorsConfigByCrop.tomato;
+	return config.map(ind => ({
 		...ind,
-		name: lang.indicators[ind.field],
+		name: (lang.indicators && lang.indicators[ind.field]) || ind.field,
 		unit: currentLang === 'zh' ? ind.unit : ind.unitEn
 	}));
 }

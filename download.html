@@ -233,7 +233,7 @@
             <!-- 1. Project Selection -->
             <div class="filter-section">
                 <label class="filter-label" data-lang="downloadPage.selectProject">选择项目</label>
-                <select id="projectSelect" class="input-field">
+                <select id="projectSelect" class="input-field" onchange="onProjectChange(this.value)">
                     <option value="" disabled selected data-lang="downloadPage.projectPlaceholder">-- 请选择项目 --</option>
                 </select>
             </div>
@@ -304,6 +304,19 @@
         setActiveNav('download');
 
         let indicators = [];
+        let projectMeta = [];
+
+        function getProjectCropType(projectName) {
+            return resolveProjectCrop(projectName, projectMeta);
+        }
+
+        function onProjectChange(projectName) {
+            if (!projectName) return;
+            const cropType = getProjectCropType(projectName);
+            setProjectCropType(projectName, cropType);
+            indicators = getIndicators(cropType);
+            renderIndicators();
+        }
 
         async function initPage() {
             await initAuth();
@@ -313,7 +326,7 @@
             }
 
             // Load Indicators
-            indicators = getIndicators(); // Helper from common.js
+            indicators = getIndicators(getCurrentCropType()); // Helper from common.js
             renderIndicators();
 
             // Load Projects
@@ -515,7 +528,7 @@
             // Let's use facility_settings to get configured projects.
             const { data, error } = await supabase
                 .from('facility_settings')
-                .select('project_name')
+                .select('*')
                 .eq('user_id', currentUser.id);
 
             if (error) {
@@ -524,7 +537,8 @@
             }
 
             // Unique projects
-            const projects = [...new Set(data.map(d => d.project_name))];
+            projectMeta = data || [];
+            const projects = [...new Set(projectMeta.map(d => d.project_name))];
             const select = document.getElementById('projectSelect');
 
             projects.forEach(p => {
@@ -533,6 +547,16 @@
                 option.textContent = p;
                 select.appendChild(option);
             });
+
+            // Keep project/crop context aligned with selection
+            const currentProject = localStorage.getItem('currentProject');
+            if (currentProject && projects.includes(currentProject)) {
+                select.value = currentProject;
+                onProjectChange(currentProject);
+            } else if (projects.length > 0) {
+                select.value = projects[0];
+                onProjectChange(projects[0]);
+            }
         }
 
         async function downloadData() {

@@ -619,13 +619,33 @@
         // 获取指标配置
         let indicators = [];
         try {
-            indicators = getIndicators();
+            const initialCrop = getProjectCropTypeForProject(currentProjectName, getCurrentCropType());
+            setProjectCropType(currentProjectName, initialCrop);
+            indicators = getIndicators(initialCrop);
             // 强制移除所有默认值，确保输入框为空
             indicators.forEach(ind => delete ind.defaultValue);
             console.log('加载了', indicators.length, '个指标');
         } catch (e) {
             console.error('加载指标失败:', e);
             alert('配置文件加载失败，请刷新页面');
+        }
+
+        async function syncProjectCropType() {
+            try {
+                if (!currentUser || !currentProjectName) return;
+                const { data, error } = await supabase
+                    .from('facility_settings')
+                    .select('project_name, crop_type')
+                    .eq('user_id', currentUser.id)
+                    .eq('project_name', currentProjectName);
+                if (!error) {
+                    const cropType = resolveProjectCrop(currentProjectName, data || []);
+                    setProjectCropType(currentProjectName, cropType);
+                }
+            } catch (_) {
+                const fallbackCrop = getProjectCropTypeForProject(currentProjectName, 'tomato');
+                setProjectCropType(currentProjectName, fallbackCrop);
+            }
         }
 
         // 动态样本管理
@@ -1111,19 +1131,64 @@
                     }
                 }
 
-                // Target Table and Conflict Key
-                const tableName = type === 'weekly' ? 'weekly_phenotypes' : 'daily_phenotypes';
-                // Schema V2 Unique Constraints:
-                // Weekly: (user_id, project_name, year, week, sample_name)
-                // Daily: (user_id, project_name, date)
-                const conflictKey = type === 'weekly'
-                    ? 'user_id, project_name, year, week, sample_name'
-                    : 'user_id, project_name, date';
-
                 // Send Request
-                const { error } = await supabase
-                    .from(tableName)
-                    .upsert(payload, { onConflict: conflictKey });
+                let error = null;
+
+                if (type === 'weekly') {
+                    const { data: existing, error: findErr } = await supabase
+                        .from('weekly_phenotypes')
+                        .select('*')
+                        .eq('user_id', currentUser.id)
+                        .eq('project_name', currentProjectName)
+                        .eq('year', year)
+                        .eq('week', week)
+                        .eq('sample_name', sampleName)
+                        .maybeSingle();
+
+                    if (findErr) throw findErr;
+
+                    if (existing) {
+                        const result = await supabase
+                            .from('weekly_phenotypes')
+                            .update(payload)
+                            .eq('user_id', currentUser.id)
+                            .eq('project_name', currentProjectName)
+                            .eq('year', year)
+                            .eq('week', week)
+                            .eq('sample_name', sampleName);
+                        error = result.error;
+                    } else {
+                        const result = await supabase
+                            .from('weekly_phenotypes')
+                            .insert(payload);
+                        error = result.error;
+                    }
+                } else {
+                    const { data: existing, error: findErr } = await supabase
+                        .from('daily_phenotypes')
+                        .select('*')
+                        .eq('user_id', currentUser.id)
+                        .eq('project_name', currentProjectName)
+                        .eq('date', date)
+                        .maybeSingle();
+
+                    if (findErr) throw findErr;
+
+                    if (existing) {
+                        const result = await supabase
+                            .from('daily_phenotypes')
+                            .update(payload)
+                            .eq('user_id', currentUser.id)
+                            .eq('project_name', currentProjectName)
+                            .eq('date', date);
+                        error = result.error;
+                    } else {
+                        const result = await supabase
+                            .from('daily_phenotypes')
+                            .insert(payload);
+                        error = result.error;
+                    }
+                }
 
                 if (error) throw error;
 
@@ -1627,6 +1692,9 @@
 
                 await initAuth();
                 console.log('认证完成');
+
+                await syncProjectCropType();
+                indicators = getIndicators(getCurrentCropType());
 
                 initDataStructure();
                 console.log('数据结构初始化完成');

@@ -588,6 +588,10 @@
                         style="display: none; background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb; margin-top: 10px;">
                         <input type="text" id="newProjectName" class="form-input" placeholder="输入项目名称"
                             style="margin-bottom: 15px; border: 1px solid #d1d5db;">
+                        <select id="newProjectCrop" class="form-input" style="margin-bottom: 15px; border: 1px solid #d1d5db;">
+                            <option value="tomato">番茄 (Tomato)</option>
+                            <option value="lettuce">生菜 (Lettuce)</option>
+                        </select>
                         <div style="display: flex; gap: 12px;">
                             <button class="login-btn" onclick="submitNewProject()"
                                 style="flex: 1; padding: 12px; font-size: 0.95rem; background: #059669; margin-top: 0;">确认创建</button>
@@ -718,12 +722,15 @@
             try {
                 const { data, error } = await supabase
                     .from('facility_settings')
-                    .select('project_name')
+                    .select('*')
                     .eq('user_id', currentUser.id);
 
                 if (error) throw error;
 
-                const projects = data.map(p => p.project_name);
+                const projects = (data || []).map(p => ({
+                    name: p.project_name,
+                    cropType: p.crop_type || 'tomato'
+                }));
                 renderProjects(projects);
             } catch (err) {
                 console.error(err);
@@ -739,29 +746,34 @@
                 return;
             }
 
-            projects.forEach((name, index) => {
+            projects.forEach((project, index) => {
+                const name = project.name;
+                const cropType = project.cropType || 'tomato';
                 const btn = document.createElement('div');
                 btn.className = 'project-btn';
                 btn.dataset.projectName = name; // Store project name for menu actions
+                btn.dataset.cropType = cropType;
 
                 // Determine Icon
                 let icon = '📊';
                 if (name.includes('温室')) icon = '🏡';
                 if (name.includes('实验')) icon = '🔬';
                 if (name.includes('田间')) icon = '🌾';
+                const cropLabel = cropType === 'lettuce' ? '生菜' : '番茄';
 
                 btn.innerHTML = `
                     <div style="display:flex; align-items:center; gap:15px;">
                         <div style="font-size:1.5rem; background:#f0fdf4; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:10px;">${icon}</div>
                         <div style="display:flex; flex-direction:column; align-items:flex-start;">
                             <span style="font-size:1.1rem; color:#111827; font-weight: 500;">${name}</span>
+                            <span style="font-size:0.78rem; color:#6b7280;">作物: ${cropLabel}</span>
                         </div>
                     </div>
                     <span class="arrow">➜</span>
                 `;
 
                 // Regular click to select project
-                btn.onclick = () => selectProject(name);
+                btn.onclick = () => selectProject(name, cropType);
 
                 // Long press to show menu (mobile)
                 let pressTimer = null;
@@ -806,7 +818,9 @@
 
         async function submitNewProject() {
             const input = document.getElementById('newProjectName');
+            const cropInput = document.getElementById('newProjectCrop');
             const projectName = input.value.trim();
+            const cropType = cropInput ? cropInput.value : 'tomato';
 
             if (!projectName) {
                 alert('请输入项目名称');
@@ -833,12 +847,24 @@
                     return;
                 }
 
-                const { error } = await supabase
+                // Backward-compatible insert: if DB hasn't added crop_type yet, retry without it
+                let { error } = await supabase
                     .from('facility_settings')
                     .insert({
                         project_name: projectName,
-                        user_id: currentUser.id
+                        user_id: currentUser.id,
+                        crop_type: cropType
                     });
+
+                if (error && String(error.message || '').includes('crop_type')) {
+                    const retry = await supabase
+                        .from('facility_settings')
+                        .insert({
+                            project_name: projectName,
+                            user_id: currentUser.id
+                        });
+                    error = retry.error;
+                }
 
                 if (error) throw error;
 
@@ -860,9 +886,10 @@
             document.getElementById('createProjectSection').scrollIntoView({ behavior: 'smooth' });
         }
 
-        function selectProject(name) {
+        function selectProject(name, cropType = 'tomato') {
             localStorage.setItem('currentProject', name);
             localStorage.setItem('lastProjectName', name);
+            localStorage.setItem('currentProjectCrop', cropType || 'tomato');
             // Use full path to avoid GitHub Pages subdirectory 404
             window.location.href = APP_BASE_URL + '/collection.html';
         }
